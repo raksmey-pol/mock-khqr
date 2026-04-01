@@ -80,3 +80,40 @@ Default storefront URL:
 - `GET /store/checkout-status/:checkoutToken`
 - `POST /store/webhooks/payment-updates`
 - `GET /store/webhooks/events`
+
+## Deploy Mock API with Docker + Nginx + SSL
+
+Use this when your storefront is on Vercel and only the mock API is self-hosted.
+
+1. Prepare env file:
+
+```bash
+cd mock-khqr/mock-store-api
+cp .env.example .env
+```
+
+Set these values in `.env`:
+
+- `WEB_ORIGIN=https://<your-vercel-domain>`
+- `OPEN_BANKING_BASE_URL=<your-open-banking-url>`
+- `MERCHANT_ID`, `MERCHANT_API_SIGNING_SECRET`, `MERCHANT_WEBHOOK_SIGNING_SECRET`
+
+2. Start the API container:
+
+```bash
+cd mock-khqr
+docker compose -f docker-compose.mock-api.yml up -d --build
+```
+
+3. Configure reverse proxy + SSL on the server:
+
+```bash
+sudo bash mock-khqr/scripts/setup-mock-api-domain.sh <api-domain> <email>
+```
+
+This script will:
+
+- install Nginx + Certbot
+- deploy `mock-khqr/nginx/mock-store-api.conf`
+- request and install Let's Encrypt certificate
+- configure automatic certificate renewal

@@ -1,0 +1,26 @@
+services:
+  mock-api:
+    build:
+      context: ./mock-store-api
+      dockerfile: Dockerfile
+    image: mock-store-api:latest
+    container_name: mock-store-api
+    restart: unless-stopped
+    env_file:
+      - ./mock-store-api/.env
+    environment:
+      - NODE_ENV=production
+      - PORT=4000
+    ports:
+      - "127.0.0.1:4000:4000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/store/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
