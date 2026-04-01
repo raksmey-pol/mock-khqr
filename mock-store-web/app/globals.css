@@ -1,0 +1,187 @@
+:root {
+  --bg: #f8f4ea;
+  --panel: #fffdf8;
+  --ink: #1f221f;
+  --muted: #61665f;
+  --accent: #0e5f4b;
+  --accent-2: #f2a93b;
+  --danger: #b94141;
+  --ok: #1f7a3e;
+  --line: #dfd7c6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Segoe UI", "Arial", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 10% 10%, #fff4d8 0%, transparent 34%),
+    radial-gradient(circle at 90% 15%, #def6ed 0%, transparent 30%), var(--bg);
+}
+
+main {
+  min-height: 100vh;
+  padding: 24px;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+}
+
+.shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+
+.hero {
+  background: linear-gradient(120deg, #0e5f4b, #157362);
+  color: #eefcf7;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 14px 34px rgba(14, 95, 75, 0.25);
+}
+
+.hero p {
+  margin: 8px 0 0;
+  opacity: 0.95;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+@media (min-width: 920px) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 15px;
+  background: #fff;
+}
+
+textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+button {
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  padding: 11px 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.status-PENDING,
+.status-PROCESSING {
+  background: #fff5d8;
+  color: #6b4b0d;
+}
+
+.status-COMPLETED {
+  background: #dcf6e4;
+  color: var(--ok);
+}
+
+.status-FAILED,
+.status-EXPIRED,
+.status-CANCELLED {
+  background: #fce1e1;
+  color: var(--danger);
+}
+
+.panel-list {
+  display: grid;
+  gap: 10px;
+}
+
+.payload {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #fbf8f0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.inline-pairs {
+  display: grid;
+  gap: 8px;
+}
+
+.inline-pair {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px dashed #e4dccb;
+  padding-bottom: 6px;
+}
+
+.alert {
+  border: 1px solid #f6c2c2;
+  background: #fff0f0;
+  color: #8b2e2e;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
