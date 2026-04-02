@@ -4,6 +4,7 @@
   "private": true,
   "description": "NestJS mock merchant backend for KHQR checkout testing",
   "scripts": {
+    "dev": "nest start --watch",
     "build": "nest build",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch"

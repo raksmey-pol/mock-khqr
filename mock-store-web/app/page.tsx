@@ -45,6 +45,8 @@ type WebhookEnvelope = {
 };
 
 const FINAL_STATUSES = new Set(["COMPLETED", "FAILED", "EXPIRED", "CANCELLED"]);
+const STATUS_POLL_INTERVAL_MS = 3500;
+const POST_EXPIRY_POLL_GRACE_MS = 2 * 60 * 1000;
 
 function extractMerchantNameFromKhqrPayload(
   qrPayload: string | null | undefined,
@@ -119,14 +121,27 @@ export default function HomePage() {
   const qrClosedLabel = getClosedQrLabel(activeStatus);
   const displayReceiverName = receiverName.trim() || "Mock Merchant";
 
+  const shouldContinueExpiredPolling = useMemo(() => {
+    if (activeStatus !== "EXPIRED" || !intent?.checkoutTokenExpiresAt) {
+      return false;
+    }
+
+    const expiresAt = new Date(intent.checkoutTokenExpiresAt).getTime();
+    if (Number.isNaN(expiresAt)) {
+      return false;
+    }
+
+    return Date.now() <= expiresAt + POST_EXPIRY_POLL_GRACE_MS;
+  }, [activeStatus, intent?.checkoutTokenExpiresAt, status?.updatedAt]);
+
   const canPoll = useMemo(
     () =>
       Boolean(
         intent?.checkoutToken &&
         activeStatus &&
-        !FINAL_STATUSES.has(activeStatus),
+        (!FINAL_STATUSES.has(activeStatus) || shouldContinueExpiredPolling),
       ),
-    [intent?.checkoutToken, activeStatus],
+    [intent?.checkoutToken, activeStatus, shouldContinueExpiredPolling],
   );
 
   async function createIntent() {
@@ -186,6 +201,7 @@ export default function HomePage() {
         );
       }
       setStatus(body as CheckoutStatus);
+      setError(null);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to fetch checkout status",
@@ -227,7 +243,7 @@ export default function HomePage() {
 
     const pollInterval = window.setInterval(() => {
       void fetchStatus(intent.checkoutToken);
-    }, 3500);
+    }, STATUS_POLL_INTERVAL_MS);
 
     return () => {
       window.clearInterval(pollInterval);
@@ -311,6 +327,13 @@ export default function HomePage() {
                   <span className={`status-chip status-${activeStatus}`}>
                     {activeStatus}
                   </span>
+                  {activeStatus === "EXPIRED" &&
+                  shouldContinueExpiredPolling ? (
+                    <p className="muted" style={{ marginTop: 8 }}>
+                      Verifying final settlement... status may still change to
+                      COMPLETED shortly.
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="inline-pairs">
