@@ -12,6 +12,8 @@ export interface KhqrCardProps {
   showLogo?: boolean;
   logoUrl?: string;
   khqrLogoUrl?: string;
+  scanDisabled?: boolean;
+  disabledLabel?: string;
   className?: string;
 }
 
@@ -26,6 +28,8 @@ const KhqrCard = React.forwardRef<HTMLDivElement, KhqrCardProps>(
       showLogo = true,
       logoUrl,
       khqrLogoUrl,
+      scanDisabled = false,
+      disabledLabel = "CLOSED",
       className = "",
     },
     ref,
@@ -185,50 +189,78 @@ const KhqrCard = React.forwardRef<HTMLDivElement, KhqrCardProps>(
               alignItems: "center",
             }}
           >
-            <div
-              style={{
-                position: "relative",
-                display: "inline-flex",
-              }}
-            >
-              <QRCodeSVG
-                value={qrData}
-                size={qrSize}
-                level="H"
-                marginSize={0}
-              />
-
-              {showLogo && resolvedQrLogoUrl && (
-                <div
+            {scanDisabled ? (
+              <div
+                style={{
+                  width: `${qrSize}px`,
+                  height: `${qrSize}px`,
+                  borderRadius: "16px",
+                  border: "2px dashed #c7c7c7",
+                  backgroundColor: "#f6f6f6",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: "center",
+                  padding: "14px",
+                }}
+              >
+                <span
                   style={{
-                    position: "absolute",
-                    top: "50%",
-                    left: "50%",
-                    transform: "translate(-50%, -50%)",
-                    width: `${qrSize * 0.18}px`,
-                    height: `${qrSize * 0.18}px`,
-                    backgroundColor: "#E1232E",
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "3px solid white",
-                    overflow: "hidden",
+                    fontSize: `${Math.max(currencySize * 1.35, 12)}px`,
+                    fontWeight: 700,
+                    color: "#666666",
+                    letterSpacing: "0.06em",
                   }}
                 >
-                  <img
-                    src={resolvedQrLogoUrl}
-                    alt="Bakong logo"
+                  {disabledLabel}
+                </span>
+              </div>
+            ) : (
+              <div
+                style={{
+                  position: "relative",
+                  display: "inline-flex",
+                }}
+              >
+                <QRCodeSVG
+                  value={qrData}
+                  size={qrSize}
+                  level="H"
+                  marginSize={0}
+                />
+
+                {showLogo && resolvedQrLogoUrl && (
+                  <div
                     style={{
-                      width: "100%",
-                      height: "100%",
+                      position: "absolute",
+                      top: "50%",
+                      left: "50%",
+                      transform: "translate(-50%, -50%)",
+                      width: `${qrSize * 0.18}px`,
+                      height: `${qrSize * 0.18}px`,
+                      backgroundColor: "#E1232E",
                       borderRadius: "50%",
-                      objectFit: "cover",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: "3px solid white",
+                      overflow: "hidden",
                     }}
-                  />
-                </div>
-              )}
-            </div>
+                  >
+                    <img
+                      src={resolvedQrLogoUrl}
+                      alt="Bakong logo"
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

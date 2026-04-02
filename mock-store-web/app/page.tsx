@@ -46,15 +46,67 @@ type WebhookEnvelope = {
 
 const FINAL_STATUSES = new Set(["COMPLETED", "FAILED", "EXPIRED", "CANCELLED"]);
 
+function extractMerchantNameFromKhqrPayload(
+  qrPayload: string | null | undefined,
+): string | null {
+  if (!qrPayload) {
+    return null;
+  }
+
+  let cursor = 0;
+  while (cursor + 4 <= qrPayload.length) {
+    const tag = qrPayload.slice(cursor, cursor + 2);
+    const lengthText = qrPayload.slice(cursor + 2, cursor + 4);
+    if (!/^\d{2}$/.test(lengthText)) {
+      return null;
+    }
+
+    const valueLength = Number(lengthText);
+    const valueStart = cursor + 4;
+    const valueEnd = valueStart + valueLength;
+    if (valueEnd > qrPayload.length) {
+      return null;
+    }
+
+    const value = qrPayload.slice(valueStart, valueEnd);
+    if (tag === "59") {
+      const merchantName = value.trim();
+      return merchantName.length > 0 ? merchantName : null;
+    }
+
+    cursor = valueEnd;
+  }
+
+  return null;
+}
+
+function getClosedQrLabel(status: string | null): string {
+  switch (status) {
+    case "COMPLETED":
+      return "PAID";
+    case "EXPIRED":
+      return "EXPIRED";
+    case "FAILED":
+      return "FAILED";
+    case "CANCELLED":
+      return "CANCELLED";
+    default:
+      return "CLOSED";
+  }
+}
+
 export default function HomePage() {
-  const apiBase =
-    process.env.NEXT_PUBLIC_STORE_API_BASE_URL?.replace(/\/$/, "") ??
-    "http://localhost:4000";
+  const apiBase = (
+    process.env.NEXT_PUBLIC_STORE_API_BASE_URL ??
+    process.env.NEXT_PUBLIC_API_URL ??
+    "http://localhost:4000"
+  ).replace(/\/$/, "");
 
   const [amount, setAmount] = useState("12.5");
   const [description, setDescription] = useState("Mock order from storefront");
   const [merchantOrderId, setMerchantOrderId] = useState(`ORDER-${Date.now()}`);
   const [receiverName, setReceiverName] = useState("Mock Merchant");
+  const [isReceiverNameEdited, setIsReceiverNameEdited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,6 +115,8 @@ export default function HomePage() {
   const [webhooks, setWebhooks] = useState<WebhookEnvelope | null>(null);
 
   const activeStatus = status?.status ?? intent?.status ?? null;
+  const isQrClosed = Boolean(activeStatus && FINAL_STATUSES.has(activeStatus));
+  const qrClosedLabel = getClosedQrLabel(activeStatus);
   const displayReceiverName = receiverName.trim() || "Mock Merchant";
 
   const canPoll = useMemo(
@@ -99,7 +153,17 @@ export default function HomePage() {
         throw new Error(body?.message ?? `Request failed (${response.status})`);
       }
 
-      setIntent(body as IntentResponse);
+      const intentResponse = body as IntentResponse;
+      setIntent(intentResponse);
+
+      if (!isReceiverNameEdited) {
+        const merchantName = extractMerchantNameFromKhqrPayload(
+          intentResponse.qrPayload,
+        );
+        if (merchantName) {
+          setReceiverName(merchantName);
+        }
+      }
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to create checkout intent",
@@ -224,7 +288,10 @@ export default function HomePage() {
                 <input
                   type="text"
                   value={receiverName}
-                  onChange={(event) => setReceiverName(event.target.value)}
+                  onChange={(event) => {
+                    setIsReceiverNameEdited(true);
+                    setReceiverName(event.target.value);
+                  }}
                 />
               </label>
 
@@ -288,9 +355,15 @@ export default function HomePage() {
                       amount={intent.amount}
                       currency={intent.currency}
                       qrData={intent.qrPayload}
+                      scanDisabled={isQrClosed}
+                      disabledLabel={qrClosedLabel}
                       width={280}
                     />
-                    <span className="muted">Scan using Bakong app</span>
+                    <span className="muted">
+                      {isQrClosed
+                        ? "QR closed. Create a new checkout intent for another payment."
+                        : "Scan using Bakong app"}
+                    </span>
                   </div>
                 </div>
 

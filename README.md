@@ -105,6 +105,20 @@ cd mock-khqr
 docker compose -f docker-compose.mock-api.yml up -d --build
 ```
 
+If your server does not support `docker compose` (v2 plugin), use:
+
+```bash
+cd mock-khqr
+docker-compose -f docker-compose.mock-api.yml up -d --build
+```
+
+Or use the compatibility helper script (auto-detects both forms):
+
+```bash
+cd mock-khqr
+bash scripts/deploy-mock-api.sh
+```
+
 3. Configure reverse proxy + SSL on the server:
 
 ```bash
