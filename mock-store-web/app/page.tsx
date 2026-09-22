@@ -267,8 +267,8 @@ export default function HomePage() {
           <article className="card">
             <h2>Create Checkout Intent</h2>
             <p className="muted">
-              This sends a signed server-to-server request through the mock
-              merchant API routes.
+              This generates a Bakong KHQR locally. Payment status updates
+              arrive through signed webhooks.
             </p>
 
             <div className="form">
@@ -406,7 +406,8 @@ export default function HomePage() {
           <h2>Webhook Inbox (Mock Merchant Backend)</h2>
           <p className="muted">
             This shows recent webhook deliveries received at{" "}
-            <strong>/store/webhooks/payment-updates</strong>.
+            <strong>/store/webhooks/payment-updates</strong>. Matching
+            deliveries update the checkout status above.
           </p>
           {!webhooks?.events?.length ? (
             <p className="muted">No webhook events received yet.</p>

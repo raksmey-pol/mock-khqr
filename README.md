@@ -1,11 +1,11 @@
 # Mock KHQR Integration Sandbox
 
-End-to-end merchant checkout sandbox for testing the KHQR flow against the Open Banking backend.
+End-to-end merchant checkout sandbox for testing the KHQR flow: the mock merchant API generates KHQR payloads locally (no Open Banking dependency) and tracks payment status from signed webhooks.
 
 The sandbox is a single Next.js app (`mock-store-web/`) that serves both:
 
 - the mock storefront UI, and
-- the mock merchant API (Route Handlers under `app/store/*`) that signs checkout requests and verifies webhooks.
+- the mock merchant API (Route Handlers under `app/store/*`) that generates Bakong KHQR payloads locally and tracks payment status from signed webhooks.
 
 > Previously the mock merchant API ran as a separate NestJS service (`mock-store-api/`). It has been moved into the Next.js app; all API paths are unchanged.
 
@@ -18,6 +18,7 @@ The sandbox is a single Next.js app (`mock-store-web/`) that serves both:
 - [Quick start (local)](#quick-start-local)
 - [Configuration reference](#configuration-reference)
 - [API reference](#api-reference)
+- [Status lifecycle](#status-lifecycle)
 - [Docker deployment](#docker-deployment)
 - [Domain + SSL setup](#domain--ssl-setup)
 - [Integration tips](#integration-tips)
@@ -29,9 +30,9 @@ The sandbox is a single Next.js app (`mock-store-web/`) that serves both:
 This sandbox is intended for merchants and integrators who want to validate the full checkout lifecycle:
 
 1. Storefront creates an intent through the mock merchant API.
-2. Mock merchant API signs and forwards the request to Open Banking `POST /api/checkout/intents`.
-3. Storefront shows KHQR and polls checkout status.
-4. Open Banking sends signed webhook updates to the mock merchant API.
+2. Mock merchant API generates a Bakong KHQR locally with the official `bakong-khqr` SDK (no upstream call).
+3. Storefront shows the KHQR and polls checkout status.
+4. Signed webhook deliveries (same contract as Open Banking `payment.status_changed` events) update the stored intent status.
 
 ## Flow
 
@@ -40,14 +41,15 @@ Mock Storefront (Next.js browser UI)
   -> POST /store/checkout-intents
 
 Mock Merchant API (Next.js route handlers)
-  -> signed POST /api/checkout/intents (Open Banking)
-  <- qrPayload + checkoutToken
+  -> generates KHQR locally (bakong-khqr SDK)
+  <- qrPayload + khqrMd5 + checkoutToken
 
 Mock Storefront
-  -> GET /store/checkout-status/:checkoutToken
+  -> GET /store/checkout-status/:checkoutToken (local status)
 
-Open Banking
-  -> POST /store/webhooks/payment-updates (signed webhook)
+Webhook sender (Open Banking / test tool)
+  -> POST /store/webhooks/payment-updates (signed)
+     -> updates intent status: PENDING -> COMPLETED / FAILED / EXPIRED / CANCELLED
 ```
 
 ## Project structure
@@ -63,7 +65,8 @@ mock-khqr/
 │   │   │   └── webhooks/
 │   │   ├── page.tsx                    # storefront checkout UI
 │   │   └── khqr-demo/
-│   ├── server/                         # signing, validation, webhook store
+│   ├── server/                         # KHQR generation, intent store, validation, webhook store
+│   ├── types/                          # bakong-khqr SDK type declarations
 │   ├── components/
 │   ├── .env.example
 │   └── Dockerfile
@@ -78,13 +81,8 @@ mock-khqr/
 
 - Node.js 20+
 - npm
-- Open Banking backend running and reachable
-- One approved merchant in Open Banking DB with:
-  - `status = APPROVED`
-  - KHQR profile configured
-  - `api_signing_secret` configured
-  - `webhook_signing_secret` configured
-  - `webhook_url` configured for this mock API
+- A Bakong account with a KHQR profile (the account ID embedded in generated QRs, e.g. `yourname@aclb`)
+- A webhook signing secret shared with whoever delivers payment status webhooks (Open Banking backend or a test tool)
 
 ## Quick start (local)
 
@@ -99,7 +97,7 @@ npm install
 npm run dev
 ```
 
-Set the Open Banking values in `.env.local` (`OPEN_BANKING_BASE_URL`, `MERCHANT_ID`, signing secrets).
+Set the Bakong values in `.env.local` (`BAKONG_ACCOUNT_ID`, and optionally `MERCHANT_NAME`, `MERCHANT_CITY`, `MERCHANT_WEBHOOK_SIGNING_SECRET`).
 
 By default, storefront + API run on:
 
@@ -109,13 +107,13 @@ The mock API is served by the same app under `/store/*`:
 
 - Health: `http://localhost:3003/store/health`
 
-### 2) Set merchant webhook URL in Open Banking
+### 2) Point the webhook sender at this app
 
-Set merchant `webhook_url` to:
+Configure the sender (Open Banking backend or a test tool) to deliver payment status webhooks to:
 
 - `http://localhost:3003/store/webhooks/payment-updates`
 
-If Open Banking runs in Docker and cannot reach host localhost, use a host-reachable endpoint (for example `host.docker.internal` where supported).
+If the sender runs in Docker and cannot reach host localhost, use a host-reachable endpoint (for example `host.docker.internal` where supported).
 
 ### 3) Test checkout
 
@@ -129,15 +127,19 @@ If Open Banking runs in Docker and cannot reach host localhost, use a host-reach
 
 ### `mock-store-web/.env.local` (local) / `mock-store-web/.env` (docker)
 
-| Variable                          | Required | Description                                   | Example                                            |
-| --------------------------------- | -------- | --------------------------------------------- | -------------------------------------------------- |
-| `OPEN_BANKING_BASE_URL`           | Yes      | Open Banking backend URL                      | `http://localhost:8000` or `http://localhost:8080` |
-| `MERCHANT_ID`                     | Yes      | Merchant UUID                                 | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`             |
-| `MERCHANT_API_SIGNING_SECRET`     | Yes      | Secret used to sign create-intent             | secret value                                       |
-| `MERCHANT_WEBHOOK_SIGNING_SECRET` | Yes      | Secret used to verify incoming webhook        | secret value                                       |
-| `WEB_ORIGIN`                      | No       | CORS allowlist for `/store/*` (empty = allow) | `https://store.example.com`                        |
-| `DEFAULT_CURRENCY`                | No       | Fallback intent currency                      | `KHR`                                              |
-| `DEFAULT_EXPIRES_IN_MINUTES`      | No       | Fallback intent expiry                        | `3`                                                |
+| Variable                          | Required | Description                                   | Example                     |
+| --------------------------------- | -------- | --------------------------------------------- | --------------------------- |
+| `BAKONG_ACCOUNT_ID`               | Yes      | Bakong account ID embedded in the QR (tag 29) | `yourname@aclb`             |
+| `MERCHANT_NAME`                   | No       | Merchant name shown in the QR (tag 59)        | `Mock Merchant`             |
+| `MERCHANT_CITY`                   | No       | Merchant city shown in the QR (tag 60)        | `Phnom Penh`                |
+| `ACQUIRING_BANK`                  | No       | Optional tag 29 field                         | bank code                   |
+| `ACCOUNT_INFORMATION`             | No       | Optional tag 29 field                         | account number              |
+| `MERCHANT_WEBHOOK_SIGNING_SECRET` | Yes      | Secret used to verify incoming webhooks       | secret value                |
+| `WEB_ORIGIN`                      | No       | CORS allowlist for `/store/*` (empty = allow) | `https://store.example.com` |
+| `DEFAULT_CURRENCY`                | No       | Fallback intent currency (`KHR` or `USD`)     | `KHR`                       |
+| `DEFAULT_EXPIRES_IN_MINUTES`      | No       | Fallback intent expiry                        | `3`                         |
+
+`MOBILE_NUMBER`, `STORE_LABEL`, and `TERMINAL_LABEL` are also accepted as optional tag 62 fields.
 
 Optional browser override:
 
@@ -150,19 +152,19 @@ Notes:
 
 - Next.js loads `.env.local` automatically for local dev/start; `docker-compose.mock-api.yml` passes `mock-store-web/.env` to the container.
 - Keep server values unprefixed (no `NEXT_PUBLIC_`) so they never reach the browser.
-- Open Banking direct run uses port `8000`; Open Banking Docker compose host mapping often uses `8080`.
+- Bakong KHQR rules: KHR amounts must be whole numbers; USD allows up to 2 decimals. Currency must be `KHR` or `USD`.
 
 ## API reference
 
 Served by Next.js Route Handlers in `mock-store-web/app/store/`.
 
-| Method | Endpoint                                | Purpose                                             |
-| ------ | --------------------------------------- | --------------------------------------------------- |
-| `GET`  | `/store/health`                         | Health check                                        |
-| `POST` | `/store/checkout-intents`               | Create checkout intent through signed upstream call |
-| `GET`  | `/store/checkout-status/:checkoutToken` | Proxy checkout status lookup                        |
-| `POST` | `/store/webhooks/payment-updates`       | Receive and verify signed webhook from Open Banking |
-| `GET`  | `/store/webhooks/events`                | Inspect in-memory webhook inbox                     |
+| Method | Endpoint                                | Purpose                                        |
+| ------ | --------------------------------------- | ---------------------------------------------- |
+| `GET`  | `/store/health`                         | Health check                                   |
+| `POST` | `/store/checkout-intents`               | Generate a Bakong KHQR intent locally          |
+| `GET`  | `/store/checkout-status/:checkoutToken` | Read locally tracked checkout status           |
+| `POST` | `/store/webhooks/payment-updates`       | Verify signed webhook and update intent status |
+| `GET`  | `/store/webhooks/events`                | Inspect in-memory webhook inbox                |
 
 ### Create intent payload
 
@@ -180,11 +182,37 @@ Served by Next.js Route Handlers in `mock-store-web/app/store/`.
 
 Validation highlights:
 
-- `amount` required and positive
-- `currency` max 3 chars
+- `amount` required and positive (KHR: whole numbers only, USD: max 2 decimals)
+- `currency` max 3 chars, must resolve to `KHR` or `USD`
 - `description` max 500 chars
 - `expiresInMinutes` between 1 and 180
 - `merchantOrderId` max 120 chars
+
+### Webhook payload (accepted)
+
+Same contract as Open Banking `payment.status_changed` events:
+
+```json
+{
+  "eventType": "payment.status_changed",
+  "occurredAt": "2026-03-30T13:32:10Z",
+  "paymentId": "2f5a1d2e-7f6f-4cc2-9ca6-4c7dc9674d94",
+  "paymentRef": "KHQR-1760000000123-A1B2C3",
+  "status": "COMPLETED",
+  "amount": 12.5,
+  "currency": "KHR",
+  "paymentExpiresAt": "2026-03-30T13:40:00Z",
+  "updatedAt": "2026-03-30T13:32:10Z"
+}
+```
+
+Signed with `hmacSha256(secret, timestamp + "\n" + rawBody)` and delivered with `X-Webhook-Timestamp`, `X-Webhook-Signature`, and `X-Webhook-Delivery-Id` headers.
+
+## Status lifecycle
+
+- New intents start as `PENDING`; they become `EXPIRED` locally once `paymentExpiresAt` passes (checked on status reads).
+- Verified webhooks update the status: matched by `checkoutToken`, `khqrMd5`/`md5`, `paymentId`, or `paymentRef`/`billNumber`; the `status` field is normalized (`PAID` → `COMPLETED`, `UNPAID` → `PENDING`, `CANCELED` → `CANCELLED`, …).
+- An accepted webhook responds with `{ ok: true, message: "Webhook accepted", matchedIntent: true|false }`.
 
 ## Docker deployment
 
@@ -199,8 +227,9 @@ cp .env.example .env
 
 Set:
 
-- `OPEN_BANKING_BASE_URL=<your-open-banking-url>`
-- `MERCHANT_ID`, `MERCHANT_API_SIGNING_SECRET`, `MERCHANT_WEBHOOK_SIGNING_SECRET`
+- `BAKONG_ACCOUNT_ID=<your-bakong-account-id>`
+- `MERCHANT_NAME`, `MERCHANT_CITY` (shown in the QR)
+- `MERCHANT_WEBHOOK_SIGNING_SECRET=<shared secret>`
 - `WEB_ORIGIN=https://<your-frontend-domain>` (only if the storefront is hosted elsewhere)
 
 ### 2) Build and start container
@@ -254,45 +283,43 @@ The script:
 
 ## Integration tips
 
-- Keep merchant secrets synchronized with Open Banking merchant settings.
-- If create-intent fails with invalid signature, verify `MERCHANT_API_SIGNING_SECRET` first.
-- The mock API can retry with webhook secret if API signing secret is wrong, but this should be treated as temporary fallback only.
-- The webhook inbox is in-memory per server instance; it resets on restart.
+- Keep `MERCHANT_WEBHOOK_SIGNING_SECRET` synchronized with the sender; webhooks failing signature verification are rejected with `401`.
+- Match webhooks to intents by `khqrMd5`/`md5` when the sender doesn't know this app's `paymentId`/`paymentRef` (for example a Bakong transaction watcher).
+- Amounts follow KHQR rules: KHR whole numbers, USD max 2 decimals — violations return `400 Unable to generate KHQR: Amount is invalid`.
+- The intent store and webhook inbox are in-memory per server instance; they reset on restart.
 - For realistic browser CORS behavior, explicitly set `WEB_ORIGIN` when the storefront is hosted on a different domain.
 
 ## Troubleshooting
 
-### `MERCHANT_ID is not configured`
+### `BAKONG_ACCOUNT_ID is not configured`
 
-Set `MERCHANT_ID` in `mock-store-web/.env.local` (or `.env` for Docker) and restart the app.
+Set `BAKONG_ACCOUNT_ID` in `mock-store-web/.env.local` (or `.env` for Docker) and restart the app.
 
-### `Invalid request signature` from upstream
+### `Invalid webhook signature`
 
-- Confirm `MERCHANT_API_SIGNING_SECRET` matches Open Banking merchant record.
-- Confirm merchant is approved and has checkout enabled.
+- Confirm `MERCHANT_WEBHOOK_SIGNING_SECRET` matches the sender configuration.
+- The signature covers `timestamp + "\n" + rawBody` (see Open Banking docs `CHECKOUT_API_INTEGRATION.md`).
 
 ### Webhooks not appearing in inbox
 
-- Confirm merchant `webhook_url` points to `/store/webhooks/payment-updates`.
-- Confirm Open Banking can reach this host/port.
-- Check `MERCHANT_WEBHOOK_SIGNING_SECRET` and timestamp/signature headers.
+- Confirm the sender's webhook URL points to `/store/webhooks/payment-updates`.
+- Confirm the sender can reach this host/port.
+- Check `MERCHANT_WEBHOOK_SIGNING_SECRET` and the timestamp/signature headers.
 
 ### Storefront cannot reach the mock API
 
 - Confirm the app is running (dev: port `3003`, Docker: port `4000`).
 - Unless `NEXT_PUBLIC_STORE_API_BASE_URL` is set, the storefront calls the API on its own origin.
 
-### Wrong Open Banking port
+### Status stays `PENDING` after a webhook
 
-- Open Banking direct run: usually `http://localhost:8000`
-- Open Banking docker-compose host mapping: often `http://localhost:8080`
-
-Set `OPEN_BANKING_BASE_URL` accordingly.
+- The webhook was accepted but matched no intent — check `matchedIntent` in the response.
+- Match keys: `checkoutToken`, `khqrMd5`/`md5`, `paymentId`, `paymentRef`/`billNumber`.
 
 ## Related resources
 
-- Open Banking quick start: [../docs/CHECKOUT_QUICK_START.md](../docs/CHECKOUT_QUICK_START.md)
-- Open Banking integration details: [../docs/CHECKOUT_API_INTEGRATION.md](../docs/CHECKOUT_API_INTEGRATION.md)
+- Open Banking quick start: [../banking-openapi/docs/CHECKOUT_QUICK_START.md](../banking-openapi/docs/CHECKOUT_QUICK_START.md)
+- Open Banking integration details: [../banking-openapi/docs/CHECKOUT_API_INTEGRATION.md](../banking-openapi/docs/CHECKOUT_API_INTEGRATION.md)
 - Component guides:
   - [mock-store-web/KHQR_COMPONENT_GUIDE.md](mock-store-web/KHQR_COMPONENT_GUIDE.md)
   - [mock-store-web/MERCHANT_GUIDE.md](mock-store-web/MERCHANT_GUIDE.md)

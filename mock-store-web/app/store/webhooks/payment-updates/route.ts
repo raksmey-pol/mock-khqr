@@ -6,6 +6,7 @@ import {
     jsonResponse,
     toErrorResponse,
 } from "@/server/http";
+import { applyWebhookStatusUpdate } from "@/server/intent-store";
 import { addWebhookEvent } from "@/server/webhook-store";
 
 export const dynamic = "force-dynamic";
@@ -75,7 +76,18 @@ export async function POST(request: Request): Promise<Response> {
             payload,
         });
 
-        return jsonResponse({ ok: true, message: "Webhook accepted" }, 201, request);
+        // Drive the checkout status from verified webhook deliveries.
+        const statusUpdate = applyWebhookStatusUpdate(payload);
+
+        return jsonResponse(
+            {
+                ok: true,
+                message: "Webhook accepted",
+                matchedIntent: statusUpdate.matched,
+            },
+            201,
+            request,
+        );
     } catch (error) {
         return toErrorResponse(error, request);
     }
