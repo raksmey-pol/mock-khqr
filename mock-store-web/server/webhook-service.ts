@@ -26,52 +26,82 @@ export function buildWebhookAcknowledgement(): Record<string, unknown> {
     };
 }
 
+function isWebhookSignatureRequired(): boolean {
+    const raw = (process.env.WEBHOOK_REQUIRE_SIGNATURE ?? "")
+        .trim()
+        .toLowerCase();
+    return !["false", "0", "no", "off"].includes(raw);
+}
+
 /**
- * Verifies a signed `payment.status_changed` webhook, records it in the
- * in-memory inbox, and applies the status to the matching checkout intent.
+ * Processes a `payment.status_changed` webhook: optionally verifies the HMAC
+ * signature, records the delivery in the in-memory inbox, and applies the
+ * status to the matching checkout intent.
+ *
+ * `WEBHOOK_REQUIRE_SIGNATURE=false` makes the signature optional (handy for
+ * manual curl tests); when signature headers are present they are still
+ * verified. Defaults to `true`.
  */
 export async function handlePaymentUpdateWebhook(
     request: Request,
 ): Promise<WebhookProcessingResult> {
     const secret = (process.env.MERCHANT_WEBHOOK_SIGNING_SECRET ?? "").trim();
-    if (secret.length === 0) {
-        throw new ApiError(500, {
-            statusCode: 500,
-            message: "MERCHANT_WEBHOOK_SIGNING_SECRET is not configured",
-            error: "Internal Server Error",
-        });
-    }
+    const requireSignature = isWebhookSignatureRequired();
 
     const timestamp = request.headers.get("x-webhook-timestamp");
     const signature = request.headers.get("x-webhook-signature");
     const deliveryId = request.headers.get("x-webhook-delivery-id");
+    const hasSignatureHeaders = Boolean(timestamp && signature);
 
-    if (!timestamp || !signature) {
-        throw new ApiError(401, {
-            statusCode: 401,
-            message: "Missing webhook signature headers",
-            error: "Unauthorized",
-        });
+    if (requireSignature) {
+        if (secret.length === 0) {
+            throw new ApiError(500, {
+                statusCode: 500,
+                message: "MERCHANT_WEBHOOK_SIGNING_SECRET is not configured",
+                error: "Internal Server Error",
+            });
+        }
+
+        if (!hasSignatureHeaders) {
+            throw new ApiError(401, {
+                statusCode: 401,
+                message: "Missing webhook signature headers",
+                error: "Unauthorized",
+            });
+        }
+    } else if (!hasSignatureHeaders) {
+        console.warn(
+            "[mock-store] accepting unsigned webhook (WEBHOOK_REQUIRE_SIGNATURE=false)",
+        );
     }
 
     const rawBody = await request.text();
-    const canonical = `${timestamp}\n${rawBody}`;
-    const expected = createHmac("sha256", secret)
-        .update(canonical, "utf8")
-        .digest("hex");
 
-    const expectedBuffer = Buffer.from(expected, "hex");
-    const providedBuffer = Buffer.from(signature.trim(), "hex");
-    const isValid =
-        expectedBuffer.length === providedBuffer.length &&
-        timingSafeEqual(expectedBuffer, providedBuffer);
+    if (timestamp && signature) {
+        if (secret.length === 0) {
+            console.warn(
+                "[mock-store] signature headers present but MERCHANT_WEBHOOK_SIGNING_SECRET is not configured; skipping verification",
+            );
+        } else {
+            const canonical = `${timestamp}\n${rawBody}`;
+            const expected = createHmac("sha256", secret)
+                .update(canonical, "utf8")
+                .digest("hex");
 
-    if (!isValid) {
-        throw new ApiError(401, {
-            statusCode: 401,
-            message: "Invalid webhook signature",
-            error: "Unauthorized",
-        });
+            const expectedBuffer = Buffer.from(expected, "hex");
+            const providedBuffer = Buffer.from(signature.trim(), "hex");
+            const isValid =
+                expectedBuffer.length === providedBuffer.length &&
+                timingSafeEqual(expectedBuffer, providedBuffer);
+
+            if (!isValid) {
+                throw new ApiError(401, {
+                    statusCode: 401,
+                    message: "Invalid webhook signature",
+                    error: "Unauthorized",
+                });
+            }
+        }
     }
 
     let payload: unknown = null;
@@ -86,8 +116,8 @@ export async function handlePaymentUpdateWebhook(
     addWebhookEvent({
         receivedAt: new Date().toISOString(),
         deliveryId: deliveryId ?? null,
-        timestamp,
-        signature,
+        timestamp: timestamp ?? null,
+        signature: signature ?? null,
         payload,
     });
 

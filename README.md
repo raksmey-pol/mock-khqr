@@ -134,6 +134,7 @@ If the sender runs in Docker and cannot reach host localhost, use a host-reachab
 | `WEB_ORIGIN`                      | No       | CORS allowlist for `/store/*` (empty = allow) | `https://store.example.com` |
 | `DEFAULT_CURRENCY`                | No       | Fallback intent currency (`KHR` or `USD`)     | `KHR`                       |
 | `DEFAULT_EXPIRES_IN_MINUTES`      | No       | Fallback intent expiry                        | `3`                         |
+| `WEBHOOK_REQUIRE_SIGNATURE`       | No       | `false` accepts unsigned callbacks (testing)  | `true`                      |
 
 `MOBILE_NUMBER`, `STORE_LABEL`, and `TERMINAL_LABEL` are also accepted as optional tag 62 fields.
 
@@ -279,7 +280,7 @@ The script:
 
 ## Integration tips
 
-- Keep `MERCHANT_WEBHOOK_SIGNING_SECRET` synchronized with the sender; webhooks failing signature verification are rejected with `401`.
+- Keep `MERCHANT_WEBHOOK_SIGNING_SECRET` synchronized with the sender; webhooks failing signature verification are rejected with `401`. Set `WEBHOOK_REQUIRE_SIGNATURE=false` to accept unsigned callbacks while testing with curl.
 - Match webhooks to intents by `khqrMd5`/`md5` when the sender doesn't know this app's `paymentId`/`paymentRef` (for example a Bakong transaction watcher).
 - Amounts follow KHQR rules: KHR whole numbers, USD max 2 decimals — violations return `400 Unable to generate KHQR: Amount is invalid`.
 - The intent store and webhook inbox are in-memory per process; they reset on restart. All `/store/*` endpoints share one route handler so a serverless demo keeps them in the same function instance — for guaranteed consistency (cold starts, scaling) run the app as a single Node process (Docker).
