@@ -58,11 +58,7 @@ Webhook sender (Open Banking / test tool)
 mock-khqr/
 ├── mock-store-web/
 │   ├── app/
-│   │   ├── store/                      # mock merchant API route handlers
-│   │   │   ├── health/
-│   │   │   ├── checkout-intents/
-│   │   │   ├── checkout-status/[checkoutToken]/
-│   │   │   └── webhooks/
+│   │   ├── store/[...path]/route.ts    # mock merchant API (all /store/* endpoints)
 │   │   ├── page.tsx                    # storefront checkout UI
 │   │   └── khqr-demo/
 │   ├── server/                         # KHQR generation, intent store, validation, webhook store
@@ -156,7 +152,7 @@ Notes:
 
 ## API reference
 
-Served by Next.js Route Handlers in `mock-store-web/app/store/`.
+Served by a single Next.js Route Handler (`mock-store-web/app/store/[...path]/route.ts`) so every endpoint runs in the same function and shares the in-memory intent store.
 
 | Method | Endpoint                                | Purpose                                        |
 | ------ | --------------------------------------- | ---------------------------------------------- |
@@ -286,7 +282,7 @@ The script:
 - Keep `MERCHANT_WEBHOOK_SIGNING_SECRET` synchronized with the sender; webhooks failing signature verification are rejected with `401`.
 - Match webhooks to intents by `khqrMd5`/`md5` when the sender doesn't know this app's `paymentId`/`paymentRef` (for example a Bakong transaction watcher).
 - Amounts follow KHQR rules: KHR whole numbers, USD max 2 decimals — violations return `400 Unable to generate KHQR: Amount is invalid`.
-- The intent store and webhook inbox are in-memory per server instance; they reset on restart.
+- The intent store and webhook inbox are in-memory per process; they reset on restart. All `/store/*` endpoints share one route handler so a serverless demo keeps them in the same function instance — for guaranteed consistency (cold starts, scaling) run the app as a single Node process (Docker).
 - For realistic browser CORS behavior, explicitly set `WEB_ORIGIN` when the storefront is hosted on a different domain.
 
 ## Troubleshooting

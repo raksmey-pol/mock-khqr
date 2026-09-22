@@ -47,6 +47,7 @@ type WebhookEnvelope = {
 const FINAL_STATUSES = new Set(["COMPLETED", "FAILED", "EXPIRED", "CANCELLED"]);
 const STATUS_POLL_INTERVAL_MS = 3500;
 const POST_EXPIRY_POLL_GRACE_MS = 2 * 60 * 1000;
+const INTENT_STORAGE_KEY = "mock-store-web.checkout-intent";
 
 function extractMerchantNameFromKhqrPayload(
   qrPayload: string | null | undefined,
@@ -116,6 +117,35 @@ export default function HomePage() {
   const [status, setStatus] = useState<CheckoutStatus | null>(null);
   const [webhooks, setWebhooks] = useState<WebhookEnvelope | null>(null);
 
+  // Restore the last created intent from local storage (client-only, so the
+  // server-rendered markup stays unchanged) and keep waiting for webhooks.
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(INTENT_STORAGE_KEY);
+      if (!stored) {
+        return;
+      }
+
+      const restored = JSON.parse(stored) as IntentResponse;
+      if (!restored?.checkoutToken || !restored?.qrPayload) {
+        return;
+      }
+
+      setIntent(restored);
+      if (!isReceiverNameEdited) {
+        const merchantName = extractMerchantNameFromKhqrPayload(
+          restored.qrPayload,
+        );
+        if (merchantName) {
+          setReceiverName(merchantName);
+        }
+      }
+    } catch {
+      // Ignore unreadable or tampered storage.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const activeStatus = status?.status ?? intent?.status ?? null;
   const isQrClosed = Boolean(activeStatus && FINAL_STATUSES.has(activeStatus));
   const qrClosedLabel = getClosedQrLabel(activeStatus);
@@ -170,6 +200,17 @@ export default function HomePage() {
 
       const intentResponse = body as IntentResponse;
       setIntent(intentResponse);
+
+      // Keep the intent in browser local storage so the page can keep polling
+      // for webhook-driven status updates after a reload.
+      try {
+        window.localStorage.setItem(
+          INTENT_STORAGE_KEY,
+          JSON.stringify(intentResponse),
+        );
+      } catch {
+        // Storage can be unavailable (private mode); polling still works in-tab.
+      }
 
       if (!isReceiverNameEdited) {
         const merchantName = extractMerchantNameFromKhqrPayload(
