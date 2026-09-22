@@ -6,6 +6,24 @@ import { addWebhookEvent } from "./webhook-store";
 
 export interface WebhookProcessingResult {
     matchedIntent: boolean;
+    checkoutToken?: string;
+    status?: string;
+}
+
+/**
+ * Standard acknowledgement body for accepted webhook callbacks — mirrors the
+ * Bakong Open API `status` envelope (`code: 0` = success).
+ */
+export function buildWebhookAcknowledgement(): Record<string, unknown> {
+    return {
+        status: {
+            code: 0,
+            errorCode: null,
+            error: null,
+            message: null,
+            warning: null,
+        },
+    };
 }
 
 /**
@@ -76,5 +94,16 @@ export async function handlePaymentUpdateWebhook(
     // Drive the checkout status from verified webhook deliveries.
     const statusUpdate = applyWebhookStatusUpdate(payload);
 
-    return { matchedIntent: statusUpdate.matched };
+    console.log(
+        `[mock-store] webhook processed (matchedIntent=${statusUpdate.matched}${statusUpdate.checkoutToken
+            ? `, checkoutToken=${statusUpdate.checkoutToken}, status=${statusUpdate.status}`
+            : ""
+        })`,
+    );
+
+    return {
+        matchedIntent: statusUpdate.matched,
+        checkoutToken: statusUpdate.checkoutToken,
+        status: statusUpdate.status,
+    };
 }

@@ -208,7 +208,7 @@ Signed with `hmacSha256(secret, timestamp + "\n" + rawBody)` and delivered with 
 
 - New intents start as `PENDING`; they become `EXPIRED` locally once `paymentExpiresAt` passes (checked on status reads).
 - Verified webhooks update the status: matched by `checkoutToken`, `khqrMd5`/`md5`, `paymentId`, or `paymentRef`/`billNumber`; the `status` field is normalized (`PAID` → `COMPLETED`, `UNPAID` → `PENDING`, `CANCELED` → `CANCELLED`, …).
-- An accepted webhook responds with `{ ok: true, message: "Webhook accepted", matchedIntent: true|false }`.
+- An accepted webhook responds `200` with the standard status envelope: `{"status":{"code":0,"errorCode":null,"error":null,"message":null,"warning":null}}`.
 
 ## Docker deployment
 
@@ -309,7 +309,7 @@ Set `BAKONG_ACCOUNT_ID` in `mock-store-web/.env.local` (or `.env` for Docker) an
 
 ### Status stays `PENDING` after a webhook
 
-- The webhook was accepted but matched no intent — check `matchedIntent` in the response.
+- The webhook was accepted but matched no intent — check the server log line `[mock-store] webhook processed (matchedIntent=...)`.
 - Match keys: `checkoutToken`, `khqrMd5`/`md5`, `paymentId`, `paymentRef`/`billNumber`.
 
 ## Related resources

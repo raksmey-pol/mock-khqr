@@ -10,7 +10,10 @@ import {
     toErrorResponse,
 } from "@/server/http";
 import { parseCreateCheckoutIntentPayload } from "@/server/validation";
-import { handlePaymentUpdateWebhook } from "@/server/webhook-service";
+import {
+    buildWebhookAcknowledgement,
+    handlePaymentUpdateWebhook,
+} from "@/server/webhook-service";
 import { listWebhookEvents } from "@/server/webhook-store";
 
 export const dynamic = "force-dynamic";
@@ -106,16 +109,8 @@ export async function POST(
             rest.length === 1 &&
             rest[0] === "payment-updates"
         ) {
-            const result = await handlePaymentUpdateWebhook(request);
-            return jsonResponse(
-                {
-                    ok: true,
-                    message: "Webhook accepted",
-                    matchedIntent: result.matchedIntent,
-                },
-                201,
-                request,
-            );
+            await handlePaymentUpdateWebhook(request);
+            return jsonResponse(buildWebhookAcknowledgement(), 200, request);
         }
 
         throw notFound(context.params.path);
