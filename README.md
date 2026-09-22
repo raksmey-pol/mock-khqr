@@ -1,11 +1,13 @@
 # Mock KHQR Integration Sandbox
 
-End-to-end merchant checkout sandbox for testing KHQR flow against the Open Banking backend.
+End-to-end merchant checkout sandbox for testing the KHQR flow against the Open Banking backend.
 
-It includes:
+The sandbox is a single Next.js app (`mock-store-web/`) that serves both:
 
-- `mock-store-api/` (NestJS): mock merchant backend that signs checkout requests and verifies webhooks.
-- `mock-store-web/` (Next.js): mock storefront UI that creates intents, renders KHQR, and polls status.
+- the mock storefront UI, and
+- the mock merchant API (Route Handlers under `app/store/*`) that signs checkout requests and verifies webhooks.
+
+> Previously the mock merchant API ran as a separate NestJS service (`mock-store-api/`). It has been moved into the Next.js app; all API paths are unchanged.
 
 ## Table of contents
 
@@ -15,8 +17,8 @@ It includes:
 - [Prerequisites](#prerequisites)
 - [Quick start (local)](#quick-start-local)
 - [Configuration reference](#configuration-reference)
-- [API reference (mock-store-api)](#api-reference-mock-store-api)
-- [Docker deployment (mock API only)](#docker-deployment-mock-api-only)
+- [API reference](#api-reference)
+- [Docker deployment](#docker-deployment)
 - [Domain + SSL setup](#domain--ssl-setup)
 - [Integration tips](#integration-tips)
 - [Troubleshooting](#troubleshooting)
@@ -26,18 +28,18 @@ It includes:
 
 This sandbox is intended for merchants and integrators who want to validate the full checkout lifecycle:
 
-1. Storefront creates an intent through the mock merchant backend.
-2. Mock merchant backend signs and forwards to Open Banking `POST /api/checkout/intents`.
+1. Storefront creates an intent through the mock merchant API.
+2. Mock merchant API signs and forwards the request to Open Banking `POST /api/checkout/intents`.
 3. Storefront shows KHQR and polls checkout status.
-4. Open Banking sends signed webhook updates to the mock merchant backend.
+4. Open Banking sends signed webhook updates to the mock merchant API.
 
 ## Flow
 
 ```text
-Mock Storefront (Next.js)
+Mock Storefront (Next.js browser UI)
   -> POST /store/checkout-intents
 
-Mock Merchant API (NestJS)
+Mock Merchant API (Next.js route handlers)
   -> signed POST /api/checkout/intents (Open Banking)
   <- qrPayload + checkoutToken
 
@@ -52,13 +54,19 @@ Open Banking
 
 ```text
 mock-khqr/
-├── mock-store-api/
-│   ├── src/
-│   ├── .env.example
-│   └── Dockerfile
 ├── mock-store-web/
 │   ├── app/
-│   └── .env.local.example
+│   │   ├── store/                      # mock merchant API route handlers
+│   │   │   ├── health/
+│   │   │   ├── checkout-intents/
+│   │   │   ├── checkout-status/[checkoutToken]/
+│   │   │   └── webhooks/
+│   │   ├── page.tsx                    # storefront checkout UI
+│   │   └── khqr-demo/
+│   ├── server/                         # signing, validation, webhook store
+│   ├── components/
+│   ├── .env.example
+│   └── Dockerfile
 ├── docker-compose.mock-api.yml
 ├── nginx/mock-store-api.conf
 └── scripts/
@@ -82,41 +90,34 @@ mock-khqr/
 
 Run all commands from this directory (`mock-khqr/`).
 
-### 1) Configure and start mock merchant API
+### 1) Configure and start the app
 
 ```bash
-cd mock-store-api
-cp .env.example .env
+cd mock-store-web
+cp .env.example .env.local
 npm install
-npm run start:dev
+npm run dev
 ```
 
-By default, mock API runs on:
+Set the Open Banking values in `.env.local` (`OPEN_BANKING_BASE_URL`, `MERCHANT_ID`, signing secrets).
 
-- `http://localhost:4000`
+By default, storefront + API run on:
+
+- `http://localhost:3003`
+
+The mock API is served by the same app under `/store/*`:
+
+- Health: `http://localhost:3003/store/health`
 
 ### 2) Set merchant webhook URL in Open Banking
 
 Set merchant `webhook_url` to:
 
-- `http://localhost:4000/store/webhooks/payment-updates`
+- `http://localhost:3003/store/webhooks/payment-updates`
 
 If Open Banking runs in Docker and cannot reach host localhost, use a host-reachable endpoint (for example `host.docker.internal` where supported).
 
-### 3) Configure and start mock storefront
-
-```bash
-cd ../mock-store-web
-cp .env.local.example .env.local
-npm install
-npm run dev
-```
-
-Default storefront URL:
-
-- `http://localhost:3003`
-
-### 4) Test checkout
+### 3) Test checkout
 
 1. Open `http://localhost:3003`.
 2. Enter amount and order details.
@@ -126,31 +127,34 @@ Default storefront URL:
 
 ## Configuration reference
 
-### `mock-store-api/.env`
+### `mock-store-web/.env.local` (local) / `mock-store-web/.env` (docker)
 
-| Variable                          | Required | Description                            | Example                                            |
-| --------------------------------- | -------- | -------------------------------------- | -------------------------------------------------- |
-| `PORT`                            | No       | API listen port                        | `4000`                                             |
-| `WEB_ORIGIN`                      | Yes      | Allowed CORS origins (comma-separated) | `http://localhost:3003`                            |
-| `OPEN_BANKING_BASE_URL`           | Yes      | Open Banking backend URL               | `http://localhost:8000` or `http://localhost:8080` |
-| `MERCHANT_ID`                     | Yes      | Merchant UUID                          | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`             |
-| `MERCHANT_API_SIGNING_SECRET`     | Yes      | Secret used to sign create-intent      | secret value                                       |
-| `MERCHANT_WEBHOOK_SIGNING_SECRET` | Yes      | Secret used to verify incoming webhook | secret value                                       |
-| `DEFAULT_EXPIRES_IN_MINUTES`      | No       | Fallback intent expiry                 | `3`                                                |
+| Variable                          | Required | Description                                   | Example                                            |
+| --------------------------------- | -------- | --------------------------------------------- | -------------------------------------------------- |
+| `OPEN_BANKING_BASE_URL`           | Yes      | Open Banking backend URL                      | `http://localhost:8000` or `http://localhost:8080` |
+| `MERCHANT_ID`                     | Yes      | Merchant UUID                                 | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`             |
+| `MERCHANT_API_SIGNING_SECRET`     | Yes      | Secret used to sign create-intent             | secret value                                       |
+| `MERCHANT_WEBHOOK_SIGNING_SECRET` | Yes      | Secret used to verify incoming webhook        | secret value                                       |
+| `WEB_ORIGIN`                      | No       | CORS allowlist for `/store/*` (empty = allow) | `https://store.example.com`                        |
+| `DEFAULT_CURRENCY`                | No       | Fallback intent currency                      | `KHR`                                              |
+| `DEFAULT_EXPIRES_IN_MINUTES`      | No       | Fallback intent expiry                        | `3`                                                |
 
-Note:
+Optional browser override:
 
-- `mock-store-api` loads `.env` at runtime from its own folder.
+| Variable                         | Required | Description                                                         | Example                 |
+| -------------------------------- | -------- | ------------------------------------------------------------------- | ----------------------- |
+| `NEXT_PUBLIC_STORE_API_BASE_URL` | No       | Base URL for a separately hosted mock API. Defaults to same origin. | `http://localhost:4000` |
+| `NEXT_PUBLIC_API_URL`            | No       | Fallback for `NEXT_PUBLIC_STORE_API_BASE_URL`                       | `http://localhost:4000` |
+
+Notes:
+
+- Next.js loads `.env.local` automatically for local dev/start; `docker-compose.mock-api.yml` passes `mock-store-web/.env` to the container.
+- Keep server values unprefixed (no `NEXT_PUBLIC_`) so they never reach the browser.
 - Open Banking direct run uses port `8000`; Open Banking Docker compose host mapping often uses `8080`.
 
-### `mock-store-web/.env.local`
+## API reference
 
-| Variable                         | Required | Description           | Example                 |
-| -------------------------------- | -------- | --------------------- | ----------------------- |
-| `NEXT_PUBLIC_STORE_API_BASE_URL` | Yes      | Base URL for mock API | `http://localhost:4000` |
-| `NEXT_PUBLIC_API_URL`            | No       | Fallback API base URL | `http://localhost:4000` |
-
-## API reference (mock-store-api)
+Served by Next.js Route Handlers in `mock-store-web/app/store/`.
 
 | Method | Endpoint                                | Purpose                                             |
 | ------ | --------------------------------------- | --------------------------------------------------- |
@@ -182,22 +186,22 @@ Validation highlights:
 - `expiresInMinutes` between 1 and 180
 - `merchantOrderId` max 120 chars
 
-## Docker deployment (mock API only)
+## Docker deployment
 
-Use this mode when storefront is hosted separately (for example Vercel) and only the mock API needs server hosting.
+Use this mode when the app needs server hosting (storefront + API in one container).
 
 ### 1) Prepare env file
 
 ```bash
-cd mock-store-api
+cd mock-store-web
 cp .env.example .env
 ```
 
 Set:
 
-- `WEB_ORIGIN=https://<your-frontend-domain>`
 - `OPEN_BANKING_BASE_URL=<your-open-banking-url>`
 - `MERCHANT_ID`, `MERCHANT_API_SIGNING_SECRET`, `MERCHANT_WEBHOOK_SIGNING_SECRET`
+- `WEB_ORIGIN=https://<your-frontend-domain>` (only if the storefront is hosted elsewhere)
 
 ### 2) Build and start container
 
@@ -219,6 +223,14 @@ Or use helper script (auto-detects compose command):
 bash scripts/deploy-mock-api.sh
 ```
 
+The container serves the storefront and the `/store/*` API on `127.0.0.1:4000`.
+
+If you previously ran the old NestJS container, remove it once:
+
+```bash
+docker rm -f mock-store-api
+```
+
 ### 3) Verify health
 
 ```bash
@@ -236,7 +248,7 @@ sudo bash scripts/setup-mock-api-domain.sh <api-domain> <email>
 The script:
 
 - installs Nginx + Certbot
-- deploys `nginx/mock-store-api.conf`
+- deploys `nginx/mock-store-api.conf` (proxies the app on port `4000`, so both the storefront and the `/store/*` API are available on the domain)
 - provisions SSL cert
 - sets renewal cron
 
@@ -245,13 +257,14 @@ The script:
 - Keep merchant secrets synchronized with Open Banking merchant settings.
 - If create-intent fails with invalid signature, verify `MERCHANT_API_SIGNING_SECRET` first.
 - The mock API can retry with webhook secret if API signing secret is wrong, but this should be treated as temporary fallback only.
-- For realistic browser CORS behavior, explicitly set `WEB_ORIGIN` including local and deployed frontend origins.
+- The webhook inbox is in-memory per server instance; it resets on restart.
+- For realistic browser CORS behavior, explicitly set `WEB_ORIGIN` when the storefront is hosted on a different domain.
 
 ## Troubleshooting
 
 ### `MERCHANT_ID is not configured`
 
-Set `MERCHANT_ID` in `mock-store-api/.env` and restart API.
+Set `MERCHANT_ID` in `mock-store-web/.env.local` (or `.env` for Docker) and restart the app.
 
 ### `Invalid request signature` from upstream
 
@@ -264,11 +277,10 @@ Set `MERCHANT_ID` in `mock-store-api/.env` and restart API.
 - Confirm Open Banking can reach this host/port.
 - Check `MERCHANT_WEBHOOK_SIGNING_SECRET` and timestamp/signature headers.
 
-### Storefront cannot reach mock API
+### Storefront cannot reach the mock API
 
-- Verify `NEXT_PUBLIC_STORE_API_BASE_URL` in `mock-store-web/.env.local`.
-- Confirm API is running on port `4000`.
-- Check CORS via `WEB_ORIGIN`.
+- Confirm the app is running (dev: port `3003`, Docker: port `4000`).
+- Unless `NEXT_PUBLIC_STORE_API_BASE_URL` is set, the storefront calls the API on its own origin.
 
 ### Wrong Open Banking port
 

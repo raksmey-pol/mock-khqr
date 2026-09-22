@@ -101,7 +101,7 @@ export default function HomePage() {
   const apiBase = (
     process.env.NEXT_PUBLIC_STORE_API_BASE_URL ??
     process.env.NEXT_PUBLIC_API_URL ??
-    "http://localhost:4000"
+    ""
   ).replace(/\/$/, "");
 
   const [amount, setAmount] = useState("12.5");
@@ -267,7 +267,8 @@ export default function HomePage() {
           <article className="card">
             <h2>Create Checkout Intent</h2>
             <p className="muted">
-              This sends a signed server-to-server request through NestJS.
+              This sends a signed server-to-server request through the mock
+              merchant API routes.
             </p>
 
             <div className="form">
