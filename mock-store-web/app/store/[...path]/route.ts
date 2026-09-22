@@ -1,3 +1,4 @@
+import { handleTransactionCallback } from "@/server/callback-service";
 import {
     createCheckoutIntent,
     getCheckoutStatus,
@@ -34,6 +35,8 @@ export const runtime = "nodejs";
  * - GET  /store/checkout-status/:checkoutToken
  * - POST /store/webhooks/payment-updates
  * - GET  /store/webhooks/events
+ * - GET  /store/callback/health-check    (alias: /api/v1/health-check)
+ * - POST /store/callback/transactions    (alias: /api/v1/transactions/callback)
  */
 
 interface RouteContext {
@@ -71,6 +74,14 @@ export async function GET(
             );
         }
 
+        if (
+            segment === "callback" &&
+            rest.length === 1 &&
+            rest[0] === "health-check"
+        ) {
+            return jsonResponse(buildWebhookAcknowledgement(), 200, request);
+        }
+
         if (segment === "checkout-status" && rest.length === 1) {
             return jsonResponse(getCheckoutStatus(rest[0]), 200, request);
         }
@@ -102,6 +113,15 @@ export async function POST(
             const payload = parseCreateCheckoutIntentPayload(body);
             const intent = await createCheckoutIntent(payload);
             return jsonResponse(intent, 201, request);
+        }
+
+        if (
+            segment === "callback" &&
+            rest.length === 1 &&
+            rest[0] === "transactions"
+        ) {
+            await handleTransactionCallback(request);
+            return jsonResponse(buildWebhookAcknowledgement(), 200, request);
         }
 
         if (

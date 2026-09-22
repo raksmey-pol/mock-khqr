@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export interface CheckoutIntentRecord {
     paymentId: string;
     paymentRef: string;
@@ -242,4 +244,31 @@ export function applyWebhookStatusUpdate(
         checkoutToken: intent.checkoutToken,
         status: intent.status,
     };
+}
+
+/**
+ * Applies a transaction-callback status to the intent matching the given KHQR
+ * payload (`qrCode`), falling back to a match on the QR's MD5.
+ */
+export function applyQrCodeStatusUpdate(
+    qrCode: string,
+    status: string,
+): CheckoutIntentRecord | null {
+    const trimmed = qrCode.trim();
+    if (trimmed.length === 0) {
+        return null;
+    }
+
+    const md5 = createHash("md5").update(trimmed, "utf8").digest("hex");
+    const intent = findIntent(
+        (item) => item.qrPayload === trimmed || item.khqrMd5 === md5,
+    );
+
+    if (!intent) {
+        return null;
+    }
+
+    intent.status = normalizeStatus(status);
+    intent.updatedAt = new Date().toISOString();
+    return intent;
 }

@@ -135,6 +135,7 @@ If the sender runs in Docker and cannot reach host localhost, use a host-reachab
 | `DEFAULT_CURRENCY`                | No       | Fallback intent currency (`KHR` or `USD`)     | `KHR`                       |
 | `DEFAULT_EXPIRES_IN_MINUTES`      | No       | Fallback intent expiry                        | `3`                         |
 | `WEBHOOK_REQUIRE_SIGNATURE`       | No       | `false` accepts unsigned callbacks (testing)  | `true`                      |
+| `CALLBACK_AUTH_TOKEN`             | No       | Bearer token required on `/api/v1/transactions/callback` (empty = no auth) | secret value                |
 
 `MOBILE_NUMBER`, `STORE_LABEL`, and `TERMINAL_LABEL` are also accepted as optional tag 62 fields.
 
@@ -162,6 +163,8 @@ Served by a single Next.js Route Handler (`mock-store-web/app/store/[...path]/ro
 | `GET`  | `/store/checkout-status/:checkoutToken` | Read locally tracked checkout status           |
 | `POST` | `/store/webhooks/payment-updates`       | Verify signed webhook and update intent status |
 | `GET`  | `/store/webhooks/events`                | Inspect in-memory webhook inbox                |
+| `POST` | `/api/v1/transactions/callback`         | Soramitsu callback: batch `SUCCESS` transactions (matched by `qrCode`) |
+| `GET`  | `/api/v1/health-check`                  | Soramitsu health check (status envelope)       |
 
 ### Create intent payload
 
@@ -281,6 +284,7 @@ The script:
 ## Integration tips
 
 - Keep `MERCHANT_WEBHOOK_SIGNING_SECRET` synchronized with the sender; webhooks failing signature verification are rejected with `401`. Set `WEBHOOK_REQUIRE_SIGNATURE=false` to accept unsigned callbacks while testing with curl.
+- Soramitsu-style callbacks (`POST /api/v1/transactions/callback`) carry `{requestId, transactions:[{qrCode, status, ...}]}`; `SUCCESS` transactions are matched to intents by `qrCode`/md5 and marked `COMPLETED`.
 - Match webhooks to intents by `khqrMd5`/`md5` when the sender doesn't know this app's `paymentId`/`paymentRef` (for example a Bakong transaction watcher).
 - Amounts follow KHQR rules: KHR whole numbers, USD max 2 decimals — violations return `400 Unable to generate KHQR: Amount is invalid`.
 - The intent store and webhook inbox are in-memory per process; they reset on restart. All `/store/*` endpoints share one route handler so a serverless demo keeps them in the same function instance — for guaranteed consistency (cold starts, scaling) run the app as a single Node process (Docker).
