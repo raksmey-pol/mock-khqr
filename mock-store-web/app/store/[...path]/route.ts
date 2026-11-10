@@ -4,13 +4,22 @@ import {
     getCheckoutStatus,
 } from "@/server/checkout-service";
 import {
+    cancelCheckoutSession,
+    createCheckoutSession,
+    getCheckoutSessionStatus,
+    listCheckoutSessions,
+} from "@/server/checkout-session-service";
+import {
     ApiError,
     handlePreflight,
     jsonResponse,
     readJsonBody,
     toErrorResponse,
 } from "@/server/http";
-import { parseCreateCheckoutIntentPayload } from "@/server/validation";
+import {
+    parseCreateCheckoutIntentPayload,
+    parseCreateCheckoutSessionPayload,
+} from "@/server/validation";
 import {
     buildWebhookAcknowledgement,
     handlePaymentUpdateWebhook,
@@ -33,6 +42,10 @@ export const runtime = "nodejs";
  * - GET  /store/health
  * - POST /store/checkout-intents
  * - GET  /store/checkout-status/:checkoutToken
+ * - POST /store/checkout/sessions            (Bakong hosted checkout page)
+ * - GET  /store/checkout/sessions            (list locally tracked sessions)
+ * - GET  /store/checkout/sessions/:sessionId
+ * - POST /store/checkout/sessions/:sessionId/cancel
  * - POST /store/webhooks/payment-updates
  * - GET  /store/webhooks/events
  * - GET  /store/callback/health-check    (alias: /api/v1/health-check)
@@ -86,6 +99,22 @@ export async function GET(
             return jsonResponse(getCheckoutStatus(rest[0]), 200, request);
         }
 
+        if (segment === "checkout" && rest[0] === "sessions") {
+            if (rest.length === 1) {
+                const records = listCheckoutSessions();
+                return jsonResponse(
+                    { count: records.length, sessions: records },
+                    200,
+                    request,
+                );
+            }
+
+            if (rest.length === 2) {
+                const record = getCheckoutSessionStatus(rest[1]);
+                return jsonResponse(record, 200, request);
+            }
+        }
+
         if (
             segment === "webhooks" &&
             rest.length === 1 &&
@@ -113,6 +142,20 @@ export async function POST(
             const payload = parseCreateCheckoutIntentPayload(body);
             const intent = await createCheckoutIntent(payload);
             return jsonResponse(intent, 201, request);
+        }
+
+        if (segment === "checkout" && rest[0] === "sessions") {
+            if (rest.length === 1) {
+                const body = await readJsonBody(request);
+                const payload = parseCreateCheckoutSessionPayload(body);
+                const record = await createCheckoutSession(payload);
+                return jsonResponse(record, 201, request);
+            }
+
+            if (rest.length === 3 && rest[2] === "cancel") {
+                const record = await cancelCheckoutSession(rest[1]);
+                return jsonResponse(record, 200, request);
+            }
         }
 
         if (
